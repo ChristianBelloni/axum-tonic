@@ -19,11 +19,14 @@ use common::{
 use hyper::Request;
 use tonic::transport::Channel;
 
-async fn do_nothing<B>(req: Request<B>, next: Next<B>) -> Result<Response, GrpcStatus> {
+async fn do_nothing(req: Request<axum::body::Body>, next: Next) -> Result<Response, GrpcStatus> {
     Ok(next.run(req).await)
 }
 
-async fn cancel_request<B>(_req: Request<B>, _next: Next<B>) -> Result<Response, GrpcStatus> {
+async fn cancel_request(
+    _req: Request<axum::body::Body>,
+    _next: Next,
+) -> Result<Response, GrpcStatus> {
     Err(tonic::Status::cancelled("Canceled").into())
 }
 
@@ -48,8 +51,11 @@ async fn main() {
 
         let service = RestGrpcService::new(rest_router, grpc_router);
 
-        axum::Server::bind(&"127.0.0.1:8080".parse().unwrap())
-            .serve(service.into_make_service())
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
+            .await
+            .unwrap();
+
+        axum::serve(listener, service.into_make_service())
             .await
             .unwrap();
     });

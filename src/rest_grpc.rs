@@ -1,6 +1,6 @@
-use axum::{body::BoxBody, http::header::CONTENT_TYPE, response::IntoResponse, Router};
+use axum::{body::Body, http::header::CONTENT_TYPE, response::IntoResponse, Router};
 use futures::{future::BoxFuture, ready};
-use hyper::{Body, Request, Response};
+use hyper::{Request, Response};
 use std::{
     convert::Infallible,
     task::{Context, Poll},
@@ -33,22 +33,22 @@ impl RestGrpcService {
 
     /// Create a make-service from this service. This make-service can be directly used
     /// in the `serve` method of an axum/hyper Server.
-    /// 
+    ///
     /// If you would like to add shared middleware for both the rest-service and the grpc-service,
     /// the following approach is recommended:
-    /// 
+    ///
     /// ```ignore
     /// use tower::{builder::ServiceBuilder, make::make_service::shared::Shared};
     /// use axum::Server;
-    /// 
+    ///
     /// let svc: RestGrpcService = my_service();
-    /// 
+    ///
     /// let svc_with_layers = ServiceBuilder::new()
     ///     .buffer(5)
     ///     .layer(my_layer1())
     ///     .layer(my_layer2())
     ///     .service(svc);
-    /// 
+    ///
     /// Server::bind(&"127.0.0.1:3000".parse().unwrap())
     ///     .serve(Shared::new(svc_with_layers))
     ///     .await
@@ -60,7 +60,7 @@ impl RestGrpcService {
 }
 
 impl Service<Request<Body>> for RestGrpcService {
-    type Response = Response<BoxBody>;
+    type Response = Response<Body>;
     type Error = Infallible;
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -72,11 +72,17 @@ impl Service<Request<Body>> for RestGrpcService {
                     return Ok(()).into();
                 }
                 (false, _) => {
-                    ready!(self.rest_router.poll_ready(cx))?;
+                    ready!(Service::<Request<Body>>::poll_ready(
+                        &mut self.rest_router,
+                        cx
+                    ))?;
                     self.rest_ready = true;
                 }
                 (_, false) => {
-                    ready!(self.grpc_router.poll_ready(cx))?;
+                    ready!(Service::<Request<Body>>::poll_ready(
+                        &mut self.grpc_router,
+                        cx
+                    ))?;
                     self.grpc_ready = true;
                 }
             }
